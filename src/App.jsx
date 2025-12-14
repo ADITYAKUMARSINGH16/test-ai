@@ -1,6 +1,7 @@
+
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-
+import ReactMarkdown from 'react-markdown'; // <--- ADD THIS LINE
 /**
  * src/App.jsx
  * AI Judicial Suite — Responsive Front-end Prototype
@@ -468,7 +469,8 @@ function LandingAssistant({ user, setRoute, cases, setCases, selectedCaseId, set
                     <div key={m.id} className={`mb-3 ${m.from === "AI Assistant" ? "text-left" : "text-right"}`}>
                       <div className="text-xs text-gray-500 mb-1">{m.from}</div>
                       <div className={`inline-block px-4 py-2 rounded-2xl text-sm ${m.from === "AI Assistant" ? "bg-indigo-600 text-white rounded-tl-none" : "bg-gray-200 dark:bg-gray-700 rounded-tr-none"}`}>
-                        {m.text}
+                          {/* This component converts the ** and new lines into real formatting */}
+                         <ReactMarkdown>{m.text}</ReactMarkdown>
                       </div>
                     </div>
                   ))
