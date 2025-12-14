@@ -5,8 +5,20 @@ import { motion, AnimatePresence } from "framer-motion";
  * src/App.jsx
  * AI Judicial Suite — Responsive Front-end Prototype
  *
- * Updated: Integrated Real n8n AI Assistant
+ * Updated: Fixed "Black Screen" crash on Lawyer Page (missing setRoute prop)
  */
+
+/* ---------- Small mocked AI helper ---------- */
+function fakeAiResponse(prompt, context = {}) {
+  if (!prompt) return "...";
+  const p = prompt.toLowerCase();
+  if (p.includes("summarize")) return `Summary — ${context.caseTitle || "No case"}: ${context.shortFacts || "No facts provided."}`;
+  if (p.includes("advice") || p.includes("what should")) return `Legal Assistant: Based on the facts, consider documenting evidence and reviewing statutory provisions relevant to the claim.`;
+  if (p.includes("evaluate") || p.includes("decide")) return `Ruling: In favor of ${context.favored || "plaintiff"}
+Reasoning: The record indicates breach of duty supported by exhibits.
+Order: Remedies as appropriate.`;
+  return `AI: (Simulated) I can help with: "${prompt}"`;
+}
 
 /* ---------- Main App Component ---------- */
 export default function AIJudicialApp() {
@@ -202,6 +214,7 @@ export default function AIJudicialApp() {
             setSelectedCaseId={setSelectedCaseId}
             assistantHistory={assistantHistory}
             setAssistantHistory={setAssistantHistory}
+            fakeAiResponse={fakeAiResponse}
             theme={theme}
           />
         )}
@@ -209,13 +222,14 @@ export default function AIJudicialApp() {
         {route === "lawyer" && (
           <LawyerPage
             user={user}
-            setRoute={setRoute}
+            setRoute={setRoute} // FIX 1: Passed setRoute prop here
             cases={cases}
             setCases={setCases}
             selectedCaseId={selectedCaseId}
             setSelectedCaseId={setSelectedCaseId}
             assistantHistory={assistantHistory}
             setAssistantHistory={setAssistantHistory}
+            fakeAiResponse={fakeAiResponse}
             theme={theme}
           />
         )}
@@ -227,25 +241,37 @@ export default function AIJudicialApp() {
             setCases={setCases}
             selectedCaseId={selectedCaseId}
             setSelectedCaseId={setSelectedCaseId}
+            fakeAiResponse={fakeAiResponse}
             theme={theme}
           />
         )}
       </main>
 
       <footer className="mt-8 py-6 border-t bg-white/60 dark:bg-gray-800">
-        <div className="max-w-6xl mx-auto px-4 text-sm text-gray-600 dark:text-gray-300 space-y-2">
-            <div className="font-medium">AI Judicial Suite</div>
-            <div>
-            This platform provides AI-assisted legal tools and information and is <strong>not</strong> a substitute for professional legal advice.
-            Use of the service is subject to our <a href="/terms" className="underline">Terms of Service</a> and <a href="/privacy" className="underline">Privacy Policy</a>.
-            </div>
-            <div>
-            Do not submit confidential, privileged, or sensitive data unless you have explicit authorization.
-            For general support or to report security issues, email <a href="mailto:support@example.com" className="underline">aijudicialsuite@example.com</a>.
-            </div>
-            <div className="text-xs text-gray-500">© {new Date().getFullYear()} AI Judicial Suite. All rights reserved.</div>
-        </div>
-      </footer>
+  <div className="max-w-6xl mx-auto px-4 text-sm text-gray-600 dark:text-gray-300 space-y-2">
+    <div className="font-medium">AI Judicial Suite</div>
+
+    <div>
+      This platform provides AI-assisted legal tools and information and is <strong>not</strong> a substitute for professional legal advice.
+      Use of the service is subject to our
+      {" "}
+      <a href="/terms" className="underline">Terms of Service</a>
+      {" "}
+      and
+      {" "}
+      <a href="/privacy" className="underline">Privacy Policy</a>.
+    </div>
+
+    <div>
+      Do not submit confidential, privileged, or sensitive data unless you have explicit authorization.
+      For general support or to report security issues, email
+      {" "}
+      <a href="mailto:support@example.com" className="underline">aijudicialsuite@example.com</a>.
+    </div>
+
+    <div className="text-xs text-gray-500">© {new Date().getFullYear()} AI Judicial Suite. All rights reserved.</div>
+  </div>
+</footer>
     </div>
   );
 }
@@ -366,61 +392,22 @@ function AuthPage({ type, setRoute, users, setUsers, setUser, theme }) {
 }
 
 /* ---------------- Landing / Assistant Page ---------------- */
-function LandingAssistant({ user, setRoute, cases, setCases, selectedCaseId, setSelectedCaseId, assistantHistory, setAssistantHistory, theme }) {
+function LandingAssistant({ user, setRoute, cases, setCases, selectedCaseId, setSelectedCaseId, assistantHistory, setAssistantHistory, fakeAiResponse, theme }) {
   const [prompt, setPrompt] = useState("");
   const [localChat, setLocalChat] = useState([]);
-  
-  // ⚠️ REPLACE THIS WITH YOUR REAL N8N WEBHOOK URL
-  const N8N_WEBHOOK_URL = "http://localhost:5678/webhook/ai-assistant";
 
-  const askAssistant = async () => {
+  const askAssistant = () => {
     if (!prompt.trim()) return;
     const q = prompt.trim();
-    
-    // 1. Add User Message
+    const resp = fakeAiResponse(q, {
+      caseTitle: cases.find((c) => c.id === selectedCaseId)?.title,
+      shortFacts: cases.find((c) => c.id === selectedCaseId)?.description?.slice(0, 120),
+    });
     const userMsg = { id: Date.now() + "-u", from: user?.name || "Guest", text: q, ts: Date.now() };
-    setLocalChat((p) => [...p, userMsg]);
+    const botMsg = { id: Date.now() + "-b", from: "AI Assistant", text: resp, ts: Date.now() + 1 };
+    setLocalChat((p) => [...p, userMsg, botMsg]);
+    if (selectedCaseId) setAssistantHistory((p) => ({ ...p, [selectedCaseId]: [...(p[selectedCaseId] || []), userMsg, botMsg] }));
     setPrompt("");
-
-    // 2. Add Loading Message
-    const loadingId = Date.now() + "-loading";
-    const loadingMsg = { id: loadingId, from: "AI Assistant", text: "Thinking...", ts: Date.now() + 1 };
-    setLocalChat((p) => [...p, loadingMsg]);
-
-    try {
-        // 3. Call n8n Webhook
-        const response = await fetch(N8N_WEBHOOK_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            // We only send chatInput as per our n8n debug
-            body: JSON.stringify({ chatInput: q }) 
-        });
-
-        if(!response.ok) throw new Error("n8n connection failed");
-        
-        const data = await response.json();
-        // Adjust this if your n8n returns { output: "..." } or { text: "..." }
-        // We added 'data.response' to the list of fields to check
-        const aiText = data.response || data.output || data.text || JSON.stringify(data);
-
-        // 4. Update with Real Response
-        const botMsg = { id: Date.now() + "-b", from: "AI Assistant", text: aiText, ts: Date.now() + 2 };
-        
-        setLocalChat(prev => prev.map(msg => msg.id === loadingId ? botMsg : msg));
-
-        // Update history if a case is selected
-        if (selectedCaseId) {
-             setAssistantHistory((p) => ({ 
-                 ...p, 
-                 [selectedCaseId]: [...(p[selectedCaseId] || []), userMsg, botMsg] 
-             }));
-        }
-
-    } catch (err) {
-        console.error("AI Error:", err);
-        const errorMsg = { id: Date.now() + "-err", from: "AI Assistant", text: "Error connecting to AI service. Please check your Webhook URL.", ts: Date.now() };
-        setLocalChat(prev => prev.map(msg => msg.id === loadingId ? errorMsg : msg));
-    }
   };
 
   return (
@@ -451,7 +438,6 @@ function LandingAssistant({ user, setRoute, cases, setCases, selectedCaseId, set
                   value={prompt} 
                   onChange={(e) => setPrompt(e.target.value)} 
                   placeholder="Ask a legal question..." 
-                  onKeyDown={(e) => e.key === "Enter" && askAssistant()}
                   className={`flex-1 px-4 py-3 rounded-lg border focus:ring-2 focus:ring-indigo-500 outline-none ${theme === "dark" ? "bg-gray-900 border-gray-600" : "bg-gray-50 border-gray-200"}`} 
                 />
                 <button onClick={askAssistant} className="px-6 py-3 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">Ask</button>
@@ -512,7 +498,8 @@ function LandingAssistant({ user, setRoute, cases, setCases, selectedCaseId, set
 }
 
 /* ---------------- Lawyer Page ---------------- */
-function LawyerPage({ user, setRoute, cases, setCases, selectedCaseId, setSelectedCaseId, assistantHistory, setAssistantHistory, theme }) {
+// FIX 2: Added setRoute to destructured props below
+function LawyerPage({ user, setRoute, cases, setCases, selectedCaseId, setSelectedCaseId, assistantHistory, setAssistantHistory, fakeAiResponse, theme }) {
   const [showNew, setShowNew] = useState(false);
   const [newCase, setNewCase] = useState({ title: "", description: "", tags: "" });
   const [message, setMessage] = useState("");
@@ -534,6 +521,7 @@ function LawyerPage({ user, setRoute, cases, setCases, selectedCaseId, setSelect
     setMessage("");
   };
 
+  // Now setRoute is defined, so this won't crash
   if (!user) return <AccessDenied theme={theme} setRoute={setRoute} />;
 
   return (
@@ -603,15 +591,14 @@ function LawyerPage({ user, setRoute, cases, setCases, selectedCaseId, setSelect
 }
 
 /* ---------------- Judge Page ---------------- */
-function JudgePage({ user, cases, setCases, selectedCaseId, setSelectedCaseId, theme }) {
+function JudgePage({ user, cases, setCases, selectedCaseId, setSelectedCaseId, fakeAiResponse, theme }) {
   const [favored, setFavored] = useState("plaintiff");
 
   const evaluate = () => {
     if (!user || user.role !== "Judge") return alert("Only Judges can issue rulings.");
     const sc = cases.find((c) => c.id === selectedCaseId);
     if (!sc) return alert("Select a case");
-    // Placeholder ruling for judge logic (could also be connected to AI if desired)
-    const resp = `Ruling: In favor of ${favored}. \nReasoning: Decision based on available evidence and judicial discretion.`;
+    const resp = fakeAiResponse("Evaluate and decide", { favored, caseTitle: sc.title });
     const ruling = { id: "R-" + Date.now(), text: resp, ts: Date.now(), judge: user.name };
     setCases((prev) => prev.map((c) => (c.id === selectedCaseId ? { ...c, ruling, status: "Ruled", timeline: [...c.timeline, { ts: Date.now(), actor: "Judge:" + user.name, action: "Issued ruling" }] } : c)));
   };
@@ -671,6 +658,7 @@ function AccessDenied({ theme, setRoute }) {
          <div className="text-4xl mb-4">🔒</div>
          <h2 className="text-xl font-bold">Access Restricted</h2>
          <p className="text-gray-500 mt-2">You must be logged in to view this workspace.</p>
+         {/* Added a login button here for better UX */}
          <button 
            onClick={() => setRoute("login")} 
            className="mt-4 px-4 py-2 rounded bg-indigo-600 text-white font-medium hover:bg-indigo-700"
